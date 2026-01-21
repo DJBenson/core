@@ -35,10 +35,11 @@ class EvohomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return self.async_abort(reason="import_failed")
 
-        try:
-            await self.async_set_unique_id(user_input[CONF_USERNAME])
-            self._abort_if_unique_id_configured()
+        # Check if already configured BEFORE the try block so the abort propagates
+        await self.async_set_unique_id(user_input[CONF_USERNAME])
+        self._abort_if_unique_id_configured()
 
+        try:
             token_manager = TokenManager(
                 self.hass,
                 user_input[CONF_USERNAME],

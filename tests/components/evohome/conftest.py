@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator, Callable
 from datetime import timedelta, timezone
 from http import HTTPMethod
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from evohomeasync2 import EvohomeClient
 from evohomeasync2.auth import AbstractTokenManager, Auth
@@ -15,16 +15,24 @@ from evohomeasync2.zone import Zone
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 
-from homeassistant.components.evohome.const import DOMAIN
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.components.evohome.const import (
+    CONF_LOCATION_IDX,
+    DOMAIN,
+    SCAN_INTERVAL_DEFAULT,
+)
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util, slugify
 from homeassistant.util.json import JsonArrayType, JsonObjectType
 
 from .const import ACCESS_TOKEN, REFRESH_TOKEN, SESSION_ID, USERNAME
-
-from tests.common import load_json_array_fixture, load_json_object_fixture
+from tests.common import MockConfigEntry, load_json_array_fixture, load_json_object_fixture
 
 
 def user_account_config_fixture(install: str) -> JsonObjectType:
@@ -71,7 +79,6 @@ def mock_post_request(install: str) -> Callable:
         self: AbstractTokenManager, url: str, /, **kwargs: Any
     ) -> JsonArrayType | JsonObjectType:
         """Obtain an access token via a POST to the vendor's web API."""
-
         if "Token" in url:
             return {
                 "access_token": f"new_{ACCESS_TOKEN}",
@@ -80,10 +87,8 @@ def mock_post_request(install: str) -> Callable:
                 "refresh_token": f"new_{REFRESH_TOKEN}",
                 # "scope": "EMEA-V1-Basic EMEA-V1-Anonymous",  # optional
             }
-
         if "session" in url:
             return {"sessionId": f"new_{SESSION_ID}"}
-
         pytest.fail(f"Unexpected request: {HTTPMethod.POST} {url}")
 
     return post_request
@@ -96,7 +101,6 @@ def mock_make_request(install: str) -> Callable:
         self: Auth, method: HTTPMethod, url: str, **kwargs: Any
     ) -> JsonArrayType | JsonObjectType:
         """Return the JSON for a HTTP get of a given URL."""
-
         if method != HTTPMethod.GET:
             pytest.fail(f"Unmocked method: {method} {url}")
 
@@ -131,7 +135,7 @@ def mock_make_request(install: str) -> Callable:
 
 @pytest.fixture
 def config() -> dict[str, str]:
-    "Return a default/minimal configuration."
+    """Return a default/minimal configuration."""
     return {
         CONF_USERNAME: USERNAME,
         CONF_PASSWORD: "password",
@@ -147,17 +151,14 @@ async def setup_evohome(
 
     The class is mocked here to check the client was instantiated with the correct args.
     """
-
     # set the time zone as for the active evohome location
     loc_idx: int = config.get("location_idx", 0)  # type: ignore[assignment]
-
     try:
         locn = user_locations_config_fixture(install)[loc_idx]
     except IndexError:
         if loc_idx == 0:
             raise
         locn = user_locations_config_fixture(install)[0]
-
     utc_offset: int = locn["locationInfo"]["timeZone"]["currentOffsetMinutes"]  # type: ignore[assignment, call-overload, index]
     dt_util.set_default_time_zone(timezone(timedelta(minutes=utc_offset)))
 
@@ -183,11 +184,9 @@ async def setup_evohome(
         await hass.async_block_till_done()
 
         mock_client.assert_called_once()
-
         assert isinstance(evo, EvohomeClient)
         assert evo._token_manager.client_id == config[CONF_USERNAME]
         assert evo._token_manager._secret == config[CONF_PASSWORD]
-
         assert evo.user_account
 
         mock_client.return_value = evo
@@ -202,9 +201,7 @@ async def evohome(
     install: str,
 ) -> AsyncGenerator[MagicMock]:
     """Return the mocked evohome client for this install fixture."""
-
     freezer.move_to("2024-07-10T12:00:00Z")  # so schedules are as expected
-
     async for mock_client in setup_evohome(hass, config, install=install):
         yield mock_client
 
@@ -212,18 +209,71 @@ async def evohome(
 @pytest.fixture
 def ctl_id(evohome: MagicMock) -> str:
     """Return the entity_id of the evohome integration's controller."""
-
     evo: EvohomeClient = evohome.return_value
     ctl: ControlSystem = evo.tcs
-
     return f"{Platform.CLIMATE}.{slugify(ctl.location.name)}"
 
 
 @pytest.fixture
 def zone_id(evohome: MagicMock) -> str:
     """Return the entity_id of the evohome integration's first zone."""
-
     evo: EvohomeClient = evohome.return_value
     zone: Zone = evo.tcs.zones[0]
-
     return f"{Platform.CLIMATE}.{slugify(zone.name)}"
+
+
+# New fixtures for config flow tests
+
+
+@pytest.fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Return a mock config entry for config flow tests."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_USERNAME: "test@example.com",
+            CONF_PASSWORD: "test-password",
+            CONF_LOCATION_IDX: 0,
+            CONF_SCAN_INTERVAL: int(SCAN_INTERVAL_DEFAULT.total_seconds()),
+        },
+        unique_id="test@example.com",
+    )
+
+
+@pytest.fixture
+def mock_evohome_client():
+    """Mock the EvohomeClient for config flow tests."""
+    with patch("homeassistant.components.evohome.config_flow.ec2.EvohomeClient") as mock_client:
+        client_instance = Mock()
+        client_instance.update = AsyncMock()
+
+        # Mock locations for validation
+        location = Mock()
+        location.locationId = "12345"
+        location.name = "Home"
+        client_instance.locations = [location, Mock()]  # Two locations
+
+        # Mock gateway
+        gateway = Mock()
+        gateway.gatewayId = "67890"
+        gateway.temperatureControlSystems = []
+        location.gateways = [gateway]
+
+        mock_client.return_value = client_instance
+        yield mock_client
+
+
+@pytest.fixture
+def mock_token_manager():
+    """Mock the TokenManager for config flow tests."""
+    with patch("homeassistant.components.evohome.config_flow.TokenManager") as mock_tm:
+        yield mock_tm
+
+
+@pytest.fixture
+def mock_setup_entry():
+    """Mock setting up a config entry."""
+    with patch(
+        "homeassistant.components.evohome.async_setup_entry", return_value=True
+    ) as mock_setup:
+        yield mock_setup

@@ -10,7 +10,25 @@
           "location_idx": "Location index",
           "scan_interval": "Scan interval (seconds)"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Evohome",
+        "description": "Update your Honeywell Evohome account credentials and settings.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "location_idx": "Location index",
+          "scan_interval": "Scan interval (seconds)"
+        }
       }
+    },
+    "abort": {
+      "already_configured": "This Evohome account is already configured.",
+      "import_failed": "Failed to import YAML configuration. Please check your credentials and try setting up the integration manually.",
+      "invalid_location_idx": "The location index is invalid for your account. Please check the valid range in the logs.",
+      "invalid_scan_interval": "The scan interval must be at least 60 seconds.",
+      "reconfigure_failed": "Reconfiguration failed. Please try again.",
+      "reconfigure_successful": "Evohome has been reconfigured successfully."
     }
   },
   "issues": {
