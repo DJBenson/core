@@ -20,12 +20,14 @@ from homeassistant.const import (
     STATE_ON,
     UnitOfTemperature,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import dt as dt_util
 
 from . import EVOHOME_KEY
+from .const import DOMAIN
 from .coordinator import EvoDataUpdateCoordinator
 from .entity import EvoChild
 
@@ -37,20 +39,15 @@ HA_STATE_TO_EVO = {STATE_AUTO: "", STATE_ON: EvoDhwState.ON, STATE_OFF: EvoDhwSt
 EVO_STATE_TO_HA = {v: k for k, v in HA_STATE_TO_EVO.items() if k != ""}
 
 
-async def async_setup_platform(
+async def _async_setup_entities(
     hass: HomeAssistant,
-    config: ConfigType,
+    coordinator: EvoDataUpdateCoordinator,
+    tcs: evo.ControlSystem,
     async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     """Create a DHW controller."""
-    if discovery_info is None:
+    if tcs.hotwater is None:
         return
-
-    coordinator = hass.data[EVOHOME_KEY].coordinator
-    tcs = hass.data[EVOHOME_KEY].tcs
-
-    assert tcs.hotwater is not None  # mypy check
 
     _LOGGER.debug(
         "Adding: DhwController (%s), id=%s",
@@ -63,6 +60,40 @@ async def async_setup_platform(
     async_add_entities([entity])
 
     await entity.update_attrs()
+
+
+async def async_setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,
+) -> None:
+    """Create a DHW controller."""
+    if discovery_info is None:
+        return
+
+    evo_data = hass.data[EVOHOME_KEY]
+    await _async_setup_entities(
+        hass,
+        evo_data.coordinator,
+        evo_data.tcs,
+        async_add_entities,
+    )
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Evohome water heater from a config entry."""
+    evo_data = hass.data[DOMAIN][entry.entry_id]
+    await _async_setup_entities(
+        hass,
+        evo_data.coordinator,
+        evo_data.tcs,
+        async_add_entities,
+    )
 
 
 class EvoDHW(EvoChild, WaterHeaterEntity):

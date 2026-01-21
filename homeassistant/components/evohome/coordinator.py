@@ -46,13 +46,14 @@ class EvoDataUpdateCoordinator(DataUpdateCoordinator):
         update_interval: timedelta,
         location_idx: int,
         client_v1: ec1.EvohomeClient | None = None,
+        config_entry=None,
     ) -> None:
         """Class to manage fetching data."""
 
         super().__init__(
             hass,
             logger,
-            config_entry=None,
+            config_entry=config_entry,
             name=name,
             update_interval=update_interval,
         )
@@ -60,7 +61,7 @@ class EvoDataUpdateCoordinator(DataUpdateCoordinator):
         self.client = client_v2
         self.client_v1 = client_v1
 
-        self.loc_idx = location_idx
+        self.loc_idx = int(location_idx)
 
         self.data: EvoLocStatusResponseT = None  # type: ignore[assignment]
         self.temps: dict[str, float | None] = {}
@@ -71,8 +72,7 @@ class EvoDataUpdateCoordinator(DataUpdateCoordinator):
     async def async_first_refresh(self) -> None:
         """Refresh data for the first time when integration is setup.
 
-        This integration does not have config flow, so it is inappropriate to
-        invoke `async_config_entry_first_refresh()`.
+        For YAML setup, skip config-entry-specific first refresh handling.
         """
 
         # can't replicate `if not await self.__wrap_async_setup():` (is mangled), so...

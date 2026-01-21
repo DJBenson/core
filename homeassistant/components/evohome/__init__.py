@@ -31,8 +31,11 @@ from homeassistant.const import (
     CONF_USERNAME,
     Platform,
 )
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv, entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -56,19 +59,10 @@ from .storage import TokenManager
 
 _LOGGER = logging.getLogger(__name__)
 
+PLATFORMS: Final = (Platform.CLIMATE, Platform.WATER_HEATER)
+
 CONFIG_SCHEMA: Final = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Required(CONF_USERNAME): cv.string,
-                vol.Required(CONF_PASSWORD): cv.string,
-                vol.Optional(CONF_LOCATION_IDX, default=0): cv.positive_int,
-                vol.Optional(
-                    CONF_SCAN_INTERVAL, default=SCAN_INTERVAL_DEFAULT
-                ): vol.All(cv.time_period, vol.Range(min=SCAN_INTERVAL_MINIMUM)),
-            }
-        )
-    },
+    {DOMAIN: dict},
     extra=vol.ALLOW_EXTRA,
 )
 
@@ -102,51 +96,133 @@ class EvoData:
     tcs: ec2.ControlSystem
 
 
+def _coerce_scan_interval(value: timedelta | int | float | dict | None) -> timedelta:
+    """Return a sane scan interval from config entry data."""
+    if value is None:
+        return SCAN_INTERVAL_DEFAULT
+    if isinstance(value, timedelta):
+        return value
+    if isinstance(value, dict):
+        return cv.time_period(value)
+    return timedelta(seconds=float(value))
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Evohome integration."""
+    if DOMAIN not in config:
+        return True
+
+    if hass.config_entries.async_entries(DOMAIN):
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            "yaml_deprecated",
+            is_fixable=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="yaml_deprecated",
+        )
+        _LOGGER.warning(
+            "Ignoring YAML config for %s because a config entry already exists",
+            DOMAIN,
+        )
+        return True
+
+    async def handle_import() -> None:
+        """Handle the YAML import."""
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_IMPORT},
+            data=dict(config[DOMAIN]),
+        )
+
+        if result.get("type") == "abort" and result.get("reason") in (
+            "import_failed",
+            "invalid_scan_interval",
+            "invalid_location_idx",
+        ):
+            ir.async_delete_issue(hass, DOMAIN, "yaml_deprecated")
+
+            issue_key = f"yaml_import_{result.get('reason')}"
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                issue_key,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=issue_key,
+            )
+
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        "yaml_deprecated",
+        is_fixable=True,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="yaml_deprecated",
+    )
+    _LOGGER.warning(
+        "YAML configuration for %s is deprecated; importing into a config entry",
+        DOMAIN,
+    )
+
+    hass.async_create_task(handle_import())
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Evohome from a config entry."""
+    entry_data = entry.data
 
     token_manager = TokenManager(
         hass,
-        config[DOMAIN][CONF_USERNAME],
-        config[DOMAIN][CONF_PASSWORD],
+        entry_data[CONF_USERNAME],
+        entry_data[CONF_PASSWORD],
         async_get_clientsession(hass),
+    )
+    scan_interval = _coerce_scan_interval(
+        entry.options.get(CONF_SCAN_INTERVAL, entry_data.get(CONF_SCAN_INTERVAL))
+    )
+    location_idx = int(
+        entry.options.get(CONF_LOCATION_IDX, entry_data.get(CONF_LOCATION_IDX, 0))
     )
     coordinator = EvoDataUpdateCoordinator(
         hass,
         _LOGGER,
         ec2.EvohomeClient(token_manager),
         name=f"{DOMAIN}_coordinator",
-        update_interval=config[DOMAIN][CONF_SCAN_INTERVAL],
-        location_idx=config[DOMAIN][CONF_LOCATION_IDX],
+        update_interval=scan_interval,
+        location_idx=location_idx,
         client_v1=ec1.EvohomeClient(token_manager),
+        config_entry=entry,
     )
 
-    await coordinator.async_register_shutdown()
-    await coordinator.async_first_refresh()
+    await coordinator.async_config_entry_first_refresh()
 
     if not coordinator.last_update_success:
-        _LOGGER.error(f"Failed to fetch initial data: {coordinator.last_exception}")  # noqa: G004
+        _LOGGER.error("Failed to fetch initial data: %s", coordinator.last_exception)
         return False
 
     assert coordinator.tcs is not None  # mypy
 
-    hass.data[EVOHOME_KEY] = EvoData(
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = EvoData(
         coordinator=coordinator,
         loc_idx=coordinator.loc_idx,
         tcs=coordinator.tcs,
     )
 
-    hass.async_create_task(
-        async_load_platform(hass, Platform.CLIMATE, DOMAIN, {}, config)
-    )
-    if coordinator.tcs.hotwater:
-        hass.async_create_task(
-            async_load_platform(hass, Platform.WATER_HEATER, DOMAIN, {}, config)
-        )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     setup_service_functions(hass, coordinator)
 
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload an Evohome config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    return unload_ok
 
 
 @callback
@@ -161,6 +237,8 @@ def setup_service_functions(
 
     It appears that all TCC-compatible systems support the same three zones modes.
     """
+    if hass.services.has_service(DOMAIN, EvoService.REFRESH_SYSTEM):
+        return
 
     @verify_domain_control(DOMAIN)
     async def force_refresh(call: ServiceCall) -> None:

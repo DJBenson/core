@@ -1,4 +1,44 @@
 {
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Evohome",
+        "description": "Sign in with your Honeywell Evohome account.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "location_idx": "Location index",
+          "scan_interval": "Scan interval (seconds)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "yaml_deprecated": {
+      "title": "Evohome YAML configuration is deprecated",
+      "description": "Configuring Evohome using YAML is being removed.\n\nYour existing YAML configuration has been imported into the UI automatically and can be safely removed from your configuration.yaml file.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Confirm removal of YAML configuration",
+            "description": "Please remove the `evohome:` section from your `configuration.yaml` file.\n\nAfter removing the YAML configuration, submit this fix to dismiss the repair."
+          }
+        }
+      }
+    },
+    "yaml_import_failed": {
+      "title": "YAML import failed",
+      "description": "Configuring Evohome using YAML is deprecated and the import failed. Please remove the `evohome` entry from your `configuration.yaml` file and set up the integration manually."
+    },
+    "yaml_import_invalid_scan_interval": {
+      "title": "YAML import failed - Invalid scan interval",
+      "description": "Configuring Evohome using YAML is deprecated and the import failed due to an invalid scan_interval value.\n\nThe scan_interval must be at least 60 seconds. Please update the scan_interval value in your `evohome:` configuration to be at least 60 (or remove it to use the default), then restart Home Assistant. Alternatively, remove the entire `evohome:` section from your `configuration.yaml` file and set up the integration manually via the UI."
+    },
+    "yaml_import_invalid_location_idx": {
+      "title": "YAML import failed - Invalid location index",
+      "description": "Configuring Evohome using YAML is deprecated and the import failed due to an invalid location_idx value.\n\nThe location_idx value is outside the valid range for your account. Please check the valid range in the error logs and update the location_idx value in your `evohome:` configuration (or remove it to use the default of 0), then restart Home Assistant. Alternatively, remove the entire `evohome:` section from your `configuration.yaml` file and set up the integration manually via the UI."
+    }
+  },
   "services": {
     "clear_zone_override": {
       "description": "Sets a zone to follow its schedule.",

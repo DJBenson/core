@@ -35,6 +35,7 @@ from homeassistant.const import (
     PRECISION_TENTHS,
     UnitOfTemperature,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -47,6 +48,7 @@ from .const import (
     ATTR_DURATION_UNTIL,
     ATTR_PERIOD,
     ATTR_SETPOINT,
+    DOMAIN,
     EvoService,
 )
 from .coordinator import EvoDataUpdateCoordinator
@@ -75,19 +77,14 @@ EVO_PRESET_TO_HA = {
 HA_PRESET_TO_EVO = {v: k for k, v in EVO_PRESET_TO_HA.items()}
 
 
-async def async_setup_platform(
+async def _async_setup_entities(
     hass: HomeAssistant,
-    config: ConfigType,
+    coordinator: EvoDataUpdateCoordinator,
+    loc_idx: int,
+    tcs: evo.ControlSystem,
     async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     """Create the evohome Controller, and its Zones, if any."""
-    if discovery_info is None:
-        return
-
-    coordinator = hass.data[EVOHOME_KEY].coordinator
-    loc_idx = hass.data[EVOHOME_KEY].loc_idx
-    tcs = hass.data[EVOHOME_KEY].tcs
 
     _LOGGER.debug(
         "Found the Location/Controller (%s), id=%s, name=%s (location_idx=%s)",
@@ -131,6 +128,42 @@ async def async_setup_platform(
 
     for entity in entities:
         await entity.update_attrs()
+
+
+async def async_setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,
+) -> None:
+    """Create the evohome Controller, and its Zones, if any."""
+    if discovery_info is None:
+        return
+
+    evo_data = hass.data[EVOHOME_KEY]
+    await _async_setup_entities(
+        hass,
+        evo_data.coordinator,
+        evo_data.loc_idx,
+        evo_data.tcs,
+        async_add_entities,
+    )
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Evohome climate from a config entry."""
+    evo_data = hass.data[DOMAIN][entry.entry_id]
+    await _async_setup_entities(
+        hass,
+        evo_data.coordinator,
+        evo_data.loc_idx,
+        evo_data.tcs,
+        async_add_entities,
+    )
 
 
 class EvoClimateEntity(EvoEntity, ClimateEntity):
