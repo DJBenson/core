@@ -1,5 +1,6 @@
 """Test the evohome config flow."""
 
+from datetime import timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -9,14 +10,12 @@ from homeassistant.components.evohome.const import (
     CONF_LOCATION_IDX,
     DOMAIN,
     SCAN_INTERVAL_DEFAULT,
-    SCAN_INTERVAL_MINIMUM,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
-
 
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "test-password"
@@ -41,9 +40,7 @@ def mock_evohome_client():
 @pytest.fixture
 def mock_token_manager():
     """Mock the TokenManager."""
-    with patch(
-        "homeassistant.components.evohome.config_flow.TokenManager"
-    ) as mock_tm:
+    with patch("homeassistant.components.evohome.config_flow.TokenManager") as mock_tm:
         yield mock_tm
 
 
@@ -154,7 +151,6 @@ async def test_import_with_timedelta_scan_interval(
     hass: HomeAssistant, mock_setup_entry, mock_evohome_client, mock_token_manager
 ) -> None:
     """Test import from YAML with timedelta scan_interval."""
-    from datetime import timedelta
 
     scan_interval_td = timedelta(seconds=300)
 
@@ -263,9 +259,7 @@ async def test_import_invalid_scan_interval(
     assert result["reason"] == "invalid_scan_interval"
 
 
-async def test_import_connection_error(
-    hass: HomeAssistant, mock_token_manager
-) -> None:
+async def test_import_connection_error(hass: HomeAssistant, mock_token_manager) -> None:
     """Test import fails with connection error."""
     with patch(
         "homeassistant.components.evohome.config_flow.ec2.EvohomeClient"

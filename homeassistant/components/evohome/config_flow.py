@@ -13,7 +13,12 @@ from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import selector
 
-from .const import CONF_LOCATION_IDX, DOMAIN, SCAN_INTERVAL_DEFAULT, SCAN_INTERVAL_MINIMUM
+from .const import (
+    CONF_LOCATION_IDX,
+    DOMAIN,
+    SCAN_INTERVAL_DEFAULT,
+    SCAN_INTERVAL_MINIMUM,
+)
 from .storage import TokenManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,7 +90,7 @@ class EvohomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_SCAN_INTERVAL: scan_interval,
             }
             return self.async_create_entry(title=user_input[CONF_USERNAME], data=data)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001
             _LOGGER.error("Error importing Evohome YAML config: %s", err)
             return self.async_abort(reason="import_failed")
 
@@ -112,7 +117,9 @@ class EvohomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_LOCATION_IDX, default=0): selector(
                     {"number": {"min": 0, "step": 1, "mode": "box"}}
                 ),
-                vol.Optional(CONF_SCAN_INTERVAL, default=default_scan_interval): selector(
+                vol.Optional(
+                    CONF_SCAN_INTERVAL, default=default_scan_interval
+                ): selector(
                     {
                         "number": {
                             "min": min_scan_interval,

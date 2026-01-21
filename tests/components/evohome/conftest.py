@@ -32,7 +32,11 @@ from homeassistant.util import dt as dt_util, slugify
 from homeassistant.util.json import JsonArrayType, JsonObjectType
 
 from .const import ACCESS_TOKEN, REFRESH_TOKEN, SESSION_ID, USERNAME
-from tests.common import MockConfigEntry, load_json_array_fixture, load_json_object_fixture
+from tests.common import (
+    MockConfigEntry,
+    load_json_array_fixture,
+    load_json_object_fixture,
+)
 
 
 def user_account_config_fixture(install: str) -> JsonObjectType:
@@ -243,7 +247,9 @@ def mock_config_entry() -> MockConfigEntry:
 @pytest.fixture
 def mock_evohome_client():
     """Mock the EvohomeClient for config flow tests."""
-    with patch("homeassistant.components.evohome.config_flow.ec2.EvohomeClient") as mock_client:
+    with patch(
+        "homeassistant.components.evohome.config_flow.ec2.EvohomeClient"
+    ) as mock_client:
         client_instance = Mock()
         client_instance.update = AsyncMock()
 
